@@ -1,51 +1,48 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormArray, FormControl, FormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 import { Store } from '@ngrx/store';
-import { Recipe } from '../recipe.model';
-import { RecipeService } from '../recipe.service';
 import * as fromAppState from '../../store/app.reducer';
-import { map } from 'rxjs';
+import * as RecipesActions from '../store/recipes.actions';
+import { map, Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-recipe-edit',
   templateUrl: './recipe-edit.component.html',
   styleUrls: ['./recipe-edit.component.css'],
 })
-export class RecipeEditComponent implements OnInit {
+export class RecipeEditComponent implements OnInit, OnDestroy {
   recipeId: number;
   editMode = false;
   recipeForm: FormGroup;
 
+  private storeSub: Subscription;
+
   constructor(
     private route: ActivatedRoute,
-    private recipeService: RecipeService,
     private router: Router,
     private store: Store<fromAppState.AppState>
   ) {}
 
   ngOnInit(): void {
     this.route.params.subscribe((params: Params) => {
-      this.recipeId = +params['id']; //the string 'id' is added cause this is the name we chose for the dynamic parameter in our route set up
-      this.editMode = params['id'] != null; //checking if we are in edit mode
+      this.recipeId = +params['id'];
+      this.editMode = params['id'] != null;
       this.initForm();
-      // console.log(this.editMode);
     });
   }
 
   onSubmit() {
-    const newRecipe = new Recipe(
-      this.recipeForm.value['name'],
-      this.recipeForm.value['description'],
-      this.recipeForm.value['imgPath'],
-      this.recipeForm.value['ingredientsInputArray']
-    );
     if (this.editMode) {
-      this.recipeService.updateRecipe(this.recipeId, newRecipe);
+      this.store.dispatch(
+        new RecipesActions.UpdateRecipe({
+          index: this.recipeId,
+          newRecipe: this.recipeForm.value,
+        })
+      );
     } else {
-      this.recipeService.addRecipe(newRecipe);
+      this.store.dispatch(new RecipesActions.AddRecipe(this.recipeForm.value));
     }
-    // this.onCancel();
     this.router.navigate(['../'], { relativeTo: this.route });
   }
 
@@ -65,11 +62,10 @@ export class RecipeEditComponent implements OnInit {
     let recipeName = '';
     let imgPath = '';
     let recipeDescription = '';
-    let recipeIngredientsInputArray = new FormArray([]); //the formArray is initialized as an empty array
+    let recipeIngredientsInputArray = new FormArray([]);
 
     if (this.editMode) {
-      // const recipe = this.recipeService.getRecipeById(this.recipeId);
-      this.store
+      this.storeSub = this.store
         .select('recipes')
         .pipe(
           map((recipeState) => {
@@ -118,5 +114,11 @@ export class RecipeEditComponent implements OnInit {
     return (
       (<FormArray>this.recipeForm.get('ingredientsInputArray')) as FormArray
     ).controls;
+  }
+
+  ngOnDestroy(): void {
+    if (this.storeSub) {
+      this.storeSub.unsubscribe();
+    }
   }
 }
